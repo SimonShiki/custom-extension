@@ -140,24 +140,11 @@ class ScopeVar {
           const varName = this.descendInputOfBlock(block, "VAR");
           const isStaticName = varName.kind === "constant";
           // If the variable is static and the scope is static, we can optimize it by using `let`
-          if (isStaticName && !this._dynamicScopeVar) {
-            if (this._scopeVarPool && this._scopeVarPool.has(varName.value)) {
-              return {
-                kind: "shikiScopeVar.get",
-                name: varName,
-              };
-            }
-            return {
-              kind: "constant",
-              value: "",
-            };
-          } else {
-            this._dynamicScopeVar = true;
-            return {
-              kind: "shikiScopeVar.get",
-              name: varName,
-            };
-          }
+          if (!isStaticName) this._dynamicScopeVar = true;
+          return {
+            kind: "shikiScopeVar.get",
+            name: varName,
+          };
         }
         default:
           return ast_descendInput.call(this, block, ...otherParams);
@@ -176,14 +163,7 @@ class ScopeVar {
           if (!this._hasScopeVar) this._hasScopeVar = true;
           const varName = this.descendInputOfBlock(block, "INDEX");
           const isStaticName = varName.kind === "constant";
-          if (isStaticName && !this._dynamicScopeVar) {
-            if (!this._scopeVarPool) {
-              this._scopeVarPool = new Set();
-            }
-            this._scopeVarPool.add(varName.value);
-          } else {
-            this._dynamicScopeVar = true;
-          }
+          if (!isStaticName) this._dynamicScopeVar = true;
           this.analyzeLoop();
           return {
             kind: "shikiScopeVar.range",
@@ -199,14 +179,7 @@ class ScopeVar {
           if (!this._hasScopeVar) this._hasScopeVar = true;
           const varName = this.descendInputOfBlock(block, "VAR");
           const isStaticName = varName.kind === "constant";
-          if (isStaticName && !this._dynamicScopeVar) {
-            if (!this._scopeVarPool) {
-              this._scopeVarPool = new Set();
-            }
-            this._scopeVarPool.add(varName.value);
-          } else {
-            this._dynamicScopeVar = true;
-          }
+          if (!isStaticName) this._dynamicScopeVar = true;
           this.analyzeLoop();
           return {
             kind: "shikiScopeVar.range",
@@ -228,15 +201,7 @@ class ScopeVar {
           const varName = this.descendInputOfBlock(block, "VAR");
           const iName = this.descendInputOfBlock(block, "I");
           const isStaticName = varName.kind === "constant" && iName.kind === "constant";
-          if (isStaticName && !this._dynamicScopeVar) {
-            if (!this._scopeVarPool) {
-              this._scopeVarPool = new Set();
-            }
-            this._scopeVarPool.add(varName.value);
-            this._scopeVarPool.add(iName.value);
-          } else {
-            this._dynamicScopeVar = true;
-          }
+          if (!isStaticName) this._dynamicScopeVar = true;
           this.analyzeLoop();
           return {
             kind: "shikiScopeVar.forEachWithList",
@@ -250,14 +215,7 @@ class ScopeVar {
           if (!this._hasScopeVar) this._hasScopeVar = true;
           const varName = this.descendInputOfBlock(block, "VAR");
           const isStaticName = varName.kind === "constant";
-          if (isStaticName && !this._dynamicScopeVar) {
-            if (!this._scopeVarPool) {
-              this._scopeVarPool = new Set();
-            }
-            this._scopeVarPool.add(varName.value);
-          } else {
-            this._dynamicScopeVar = true;
-          }
+          if (!isStaticName) this._dynamicScopeVar = true;
 
           return {
             kind: "shikiScopeVar.create",
@@ -269,14 +227,7 @@ class ScopeVar {
           if (!this._hasScopeVar) this._hasScopeVar = true;
           const varName = this.descendInputOfBlock(block, "VAR");
           const isStaticName = varName.kind === "constant";
-          if (isStaticName && !this._dynamicScopeVar) {
-            if (!this._scopeVarPool) {
-              this._scopeVarPool = new Set();
-            }
-            this._scopeVarPool.add(varName.value);
-          } else {
-            this._dynamicScopeVar = true;
-          }
+          if (!isStaticName) this._dynamicScopeVar = true;
           return {
             kind: "shikiScopeVar.set",
             name: varName,
@@ -287,14 +238,7 @@ class ScopeVar {
           if (!this._hasScopeVar) this._hasScopeVar = true;
           const varName = this.descendInputOfBlock(block, "VAR");
           const isStaticName = varName.kind === "constant";
-          if (isStaticName && !this._dynamicScopeVar) {
-            if (!this._scopeVarPool) {
-              this._scopeVarPool = new Set();
-            }
-            this._scopeVarPool.add(varName.value);
-          } else {
-            this._dynamicScopeVar = true;
-          }
+          if (!isStaticName) this._dynamicScopeVar = true;
           return {
             kind: "shikiScopeVar.change",
             name: varName,
@@ -312,7 +256,6 @@ class ScopeVar {
       const result = ir_generateScriptTree.call(this, generator, topBlockId, ...otherParams);
       if (generator._hasScopeVar) this._hasScopeVar = true;
       if (generator._dynamicScopeVar) this._dynamicScopeVar = true;
-      if (generator._scopeVarPool) this._scopeVarPool = generator._scopeVarPool;
       return result;
     };
 
@@ -321,7 +264,6 @@ class ScopeVar {
       const ir = ir_generate.call(this, ...otherParams);
       if (this._hasScopeVar) ir._hasScopeVar = true;
       if (this._dynamicScopeVar) ir._dynamicScopeVar = true;
-      if (this._scopeVarPool) ir._scopeVarPool = Array.from(this._scopeVarPool);
       return ir;
     };
 
