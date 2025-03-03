@@ -27,6 +27,38 @@ const { Cast } = window.Scratch;
 class ScopeVar {
   constructor(runtime) {
     this.runtime = runtime ?? Scratch.vm?.runtime;
+
+    // 修复 ccw 自定义返回值积木的局部域bug：
+    // 返回值积木本身没有stackFrame，导致局部域变量无法正确存储
+    // 为此维护一个stackFrame._scopeVarsForReturn数组，当做返回值的frames
+    // 进入返回值时，push一个空对象，退出时pop
+    const primitives = this.runtime?._primitives;
+    if (primitives) {
+      const orig = primitives.procedures_call_with_return;
+      if (!orig._scopeVarPatched) {
+        // 劫持自制返回值积木：
+        // 由于返回值自制积木本身没有stackFrame，需要特殊处理
+        primitives.procedures_call_with_return = function (args, util) {
+          const stackFrame = util.thread.peekStackFrame();
+          // 存放 stackFrame 内调用的返回值积木的局部变量信息
+          let frames = stackFrame._scopeVarsForReturn;
+          if (!frames) {
+            frames = [];
+            stackFrame._scopeVarsForReturn = frames;
+          }
+          if (stackFrame.executionContext?.executed) {
+            // 返回值执行完成
+            frames.pop();
+          } else {
+            // 进入返回值
+            frames.push(Object.create(null));
+          }
+          return orig.call(this, args, util);
+        };
+        primitives.procedures_call_with_return._scopeVarPatched = true;
+      }
+    }
+
     this.patchCompiler();
     this.runtime.ext_shikiScopeVar = this;
 
@@ -710,7 +742,7 @@ class ScopeVar {
    * @returns {*} vars
    */
   _getVarObjByName(name, thread, isThreadVar = false) {
-    const { stackFrames, stack } = thread;
+    const { stackFrames } = thread;
 
     // current block is top-level, read it from thread
     if (stackFrames.length < 2 || isThreadVar) {
@@ -723,8 +755,16 @@ class ScopeVar {
 
     // look up the i from outer scope up
     for (let i = stackFrames.length - 2; i >= 0; i--) {
-      const { executionContext } = stackFrames[i];
+      const { executionContext, op } = stackFrames[i];
 
+      // 返回值积木非常特殊，它本身没有stackFrame。
+      // 遂尝试将返回值积木变量存在 stackFrame._scopeVarsForReturn中
+      if (op.opcode === "procedures_call_with_return") {
+        const frames = stackFrames[i]._scopeVarsForReturn;
+        const vars = frames[frames.length - 1];
+        if (name in vars) return vars;
+        return this._getOrInitScopeVars(thread);
+      }
       if (
         executionContext !== null &&
         typeof executionContext.shikiVars === "object" &&
@@ -733,11 +773,7 @@ class ScopeVar {
         return executionContext.shikiVars;
       }
       // 如果该层是自制积木或返回值就退出（自制积木不应该再继续访问外部的局部变量）
-      const block = thread.target.blocks.getBlock(stack[i]);
-      if (
-        (block && block.opcode === "procedures_call") ||
-        stackFrames[i].op?.opcode === "procedures_call_with_return"
-      ) {
+      if (op.opcode === "procedures_call") {
         return this._getOrInitScopeVars(thread);
       }
     }
@@ -768,6 +804,13 @@ class ScopeVar {
       vars = thread.shikiVars;
     } else {
       const outerStackFrame = stackFrames[stackFrames.length - 1 - back];
+      const { op } = outerStackFrame;
+      // 返回值积木非常特殊，它本身没有stackFrame。
+      // 遂尝试将返回值积木变量存在 stackFrame._scopeVarsForReturn中
+      if (op.opcode === "procedures_call_with_return") {
+        const frames = outerStackFrame._scopeVarsForReturn;
+        return frames[frames.length - 1];
+      }
       if (!outerStackFrame.executionContext) {
         outerStackFrame.executionContext = {};
       }
